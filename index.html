@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resumidor de Documentos con IA</title>
+    <!-- Tailwind CSS para un estilo moderno y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fuente Inter de Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Degradado simétrico: azul, gris, blanco al centro, gris, azul */
+            background: linear-gradient(90deg, #1e293b 0%, #bdbdbd 20%, #ffffff 50%, #bdbdbd 80%, #1e293b 100%);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(30,41,59,0.92);
+            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.45);
+            backdrop-filter: blur(6px);
+            border-radius: 1.5rem;
+            border: 1.5px solid rgba(0,0,0,0.25);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .glass-card:hover {
+            transform: translateY(-4px) scale(1.01);
+            box-shadow: 0 12px 40px 0 rgba(0,0,0,0.55);
+        }
+        .btn {
+            /* Las clases Tailwind se aplican directamente en el HTML, no usar @apply aquí */
+        }
+        .btn-primary {
+            color: #222;
+        .btn-disabled {
+            /* Las clases Tailwind se aplican directamente en el HTML, no usar @apply aquí */
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #a78bfa;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Mensajes animados */
+        #messageBox {
+            transition: opacity 0.4s, transform 0.4s;
+        }
+        #messageBox:not(.hidden) {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #messageBox.hidden {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        /* Animación para el resumen */
+        #summaryOutput {
+            animation: fadeInUp 0.7s cubic-bezier(.39,.575,.565,1) both;
+        @keyframes fadeInUp {
+            0% {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+    <script>
+        // (El código de regenerar y generateSummary está al final del body, no aquí)
+    </script>
+    <script>
+        // (La lógica de resumen y listeners está solo al final del body)
+    </script>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div id="mainContainer" class="container glass-card shadow-2xl p-8 transition-all duration-700 max-w-md">
+        <h1 id="mainTitle" class="text-4xl font-extrabold text-center mb-6 drop-shadow-lg transition-colors duration-1000" style="text-shadow: 2px 4px 16px #000a, 0 2px 8px #1e293b;">Resumidor de Documentos con IA</h1>
+        <p class="text-lg text-gray-100 mb-8 text-center">Sube un archivo <span class="font-semibold text-red-500">.txt</span> o <span class="font-semibold text-blue-500">PDF</span> para obtener un resumen rápido de su contenido.<br><span class="text-sm text-green-400">Se requiere conexión a internet para la función de resumen con IA.</span></p>
+
+        <div class="mb-6 flex flex-col gap-2">
+            <div class="relative w-full">
+                <input type="file" id="fileInput" accept=".txt,.pdf" class="hidden" />
+                <button id="customFileButton" type="button" class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full font-semibold bg-gradient-to-r from-cyan-300 via-green-200 to-blue-200 text-gray-900 shadow-md transition-all duration-200 border-2 border-cyan-200 focus:ring-2 focus:ring-cyan-400 file-animate">
+                    <span id="customFileButtonText">Selecciona Documento</span>
+                </button>
+                <span id="selectedFileName" class="block mt-2 text-sm text-gray-300 truncate"></span>
+            </div>
+        </div>
+
+        <button id="summarizeButton" class="btn btn-primary w-full flex items-center justify-center shadow-2xl hover:scale-110 focus:ring-4 focus:ring-pink-300 text-xl py-5 mb-2 rounded-full border-0" style="letter-spacing:1px; font-size:1.35rem;" disabled>
+            <span id="buttonText">Resumir Documento</span>
+            <div id="loadingSpinner" class="spinner ml-3 hidden"></div>
+        </button>
+
+        <!-- Contenedor para mensajes de estado/error -->
+        <div id="messageBox" class="mt-6 p-4 rounded-lg text-base font-medium shadow-md hidden" role="alert"></div>
+
+        <!-- Área para mostrar el resumen -->
+        <div id="summaryOutput" class="mt-8 p-6 bg-gray-900 border border-blue-900 rounded-2xl shadow-lg hidden">
+            <h2 class="text-2xl font-bold text-blue-400 mb-4 flex items-center gap-2">Resumen:</h2>
+            <p id="summaryText" class="text-gray-100 whitespace-pre-wrap text-lg leading-relaxed"></p>
+        </div>
+
+        <!-- Opciones de descarga: nombre de archivo y formato y botón, ahora justo después del mensaje de éxito -->
+        <div id="downloadOptions" class="flex flex-col md:flex-row gap-2 mt-4 items-center justify-center w-full" style="display:none;">
+            <select id="fileFormatSelect" class="rounded-lg px-3 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-400 text-gray-900 w-full md:w-auto">
+                <option value="doc">Word (.doc)</option>
+                <option value="txt">Texto (.txt)</option>
+            </select>
+            <button id="downloadWordButton" class="w-full md:w-auto px-6 py-3 rounded-full font-semibold bg-gradient-to-r from-blue-400 via-cyan-300 to-green-300 text-gray-900 shadow-md border-2 border-blue-200 transition-all duration-200 hover:scale-105 focus:ring-2 focus:ring-blue-400">
+                Descargar resumen
+            </button>
+        </div>
+
+        <style>
+        #downloadWordButton { display: none; }
+        </style>
+    </div>
+
+    <!-- Script de pdf.js para la lectura de PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+    /* Animación suave para el botón de archivo personalizado */
+    .file-animate {
+        animation: filePulse 2.2s infinite alternate;
+    }
+    @keyframes filePulse {
+        0% { filter: brightness(1); box-shadow: 0 0 0 0 #38bdf8; }
+        100% { filter: brightness(1.07); box-shadow: 0 0 4px 1px #38bdf833; }
+    }
+    </style>
+    <script>
+        // Configura la ruta del worker para pdf.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // Obtener referencias a los elementos del DOM
+        const fileInput = document.getElementById('fileInput');
+        const customFileButton = document.getElementById('customFileButton');
+        const customFileButtonText = document.getElementById('customFileButtonText');
+        const selectedFileName = document.getElementById('selectedFileName');
+        const summarizeButton = document.getElementById('summarizeButton');
+        const buttonText = document.getElementById('buttonText');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const messageBox = document.getElementById('messageBox');
+        const summaryOutput = document.getElementById('summaryOutput');
+        const summaryText = document.getElementById('summaryText');
+        const downloadWordButton = document.getElementById('downloadWordButton');
+
+        let selectedFile = null; // Variable para almacenar el archivo seleccionado
+
+        // Variables globales para Firebase y el ID de la aplicación (proporcionadas por el entorno Canvas)
+        // Aunque no se usan directamente para esta app, se incluyen por si se expandiera en el futuro
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Función para mostrar mensajes al usuario (errores, éxito, información)
+        function showMessage(message, type = 'info') {
+            messageBox.textContent = message;
+            // Limpiar clases de estilo previas y añadir las nuevas según el tipo de mensaje
+            messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-700');
+            } else {
+                messageBox.classList.add('bg-blue-100', 'text-blue-700');
+            }
+            messageBox.classList.remove('hidden'); // Mostrar el cuadro de mensaje
+        }
+
+        // Función para ocultar el cuadro de mensajes
+        function hideMessage() {
+            messageBox.classList.add('hidden');
+        }
+
+        // Lógica para el botón personalizado de archivo
+        function updateFileInputAnimation() {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                customFileButton.classList.add('file-animate');
+                selectedFileName.textContent = '';
+                customFileButtonText.textContent = 'Selecciona Documento';
+            } else {
+                customFileButton.classList.remove('file-animate');
+                if (fileInput.files[0]) {
+                    selectedFileName.textContent = fileInput.files[0].name;
+                    customFileButtonText.textContent = 'Cambiar Documento';
+                }
+            }
+        }
+        updateFileInputAnimation();
+        customFileButton.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (event) => {
+            selectedFile = event.target.files[0]; // Obtener el primer archivo seleccionado
+            updateFileInputAnimation();
+            if (selectedFile) {
+                // Habilitar el botón de resumir si hay un archivo
+                summarizeButton.disabled = false;
+                summarizeButton.classList.remove('btn-disabled');
+                summarizeButton.classList.add('btn-primary');
+                // Igualar el formato al botón "Cambiar Documento"
+                summarizeButton.classList.remove('bg-gradient-to-r', 'from-green-300', 'via-blue-300', 'to-red-300', 'from-yellow-300', 'via-green-300', 'to-blue-300', 'text-gray-900', 'ring-2', 'ring-yellow-200');
+                summarizeButton.classList.add('bg-gradient-to-r', 'from-cyan-300', 'via-green-200', 'to-blue-200', 'text-gray-900', 'shadow-md', 'border-2', 'border-cyan-200');
+                summarizeButton.style.fontWeight = 'bold';
+                summarizeButton.style.letterSpacing = '1px';
+                summarizeButton.style.fontSize = '1.35rem';
+                hideMessage(); // Ocultar cualquier mensaje previo
+                summaryOutput.classList.add('hidden'); // Ocultar el resumen anterior
+                // Restaurar visibilidad del botón de resumir y ocultar opciones de descarga
+                summarizeButton.style.display = 'flex';
+                summarizeButton.classList.remove('hidden', 'invisible');
+                // Restaurar clases de color y gradiente originales
+                summarizeButton.classList.remove(
+                    'bg-gradient-to-r',
+                    'from-green-300', 'via-blue-300', 'to-red-300',
+                    'from-yellow-300', 'via-green-300', 'to-blue-300',
+                    'ring-2', 'ring-yellow-200',
+                    'text-gray-900', 'shadow-md', 'border-2', 'border-cyan-200'
+                );
+                summarizeButton.classList.add(
+                    'bg-gradient-to-r', 'from-cyan-300', 'via-green-200', 'to-blue-200',
+                    'text-gray-900', 'shadow-md', 'border-2', 'border-cyan-200'
+                );
+                summarizeButton.style.fontWeight = 'bold';
+                summarizeButton.style.letterSpacing = '1px';
+                summarizeButton.style.fontSize = '1.35rem';
+                document.getElementById('downloadWordButton').style.display = 'none';
+                document.getElementById('downloadOptions').style.display = 'none';
+            } else {
+                // Deshabilitar el botón si no hay archivo
+                summarizeButton.disabled = true;
+                summarizeButton.classList.add('btn-disabled');
+                summarizeButton.classList.remove('btn-primary');
+                // Restaurar diseño original (solo color)
+                summarizeButton.classList.remove('bg-gradient-to-r', 'from-cyan-300', 'via-green-200', 'to-blue-200', 'text-gray-900', 'shadow-md', 'border-2', 'border-cyan-200');
+                summarizeButton.classList.remove('bg-gradient-to-r', 'from-yellow-300', 'via-green-300', 'to-blue-300', 'ring-2', 'ring-yellow-200');
+                summarizeButton.classList.add('bg-gradient-to-r', 'from-green-300', 'via-blue-300', 'to-red-300');
+                summarizeButton.style.fontWeight = '';
+                summarizeButton.style.letterSpacing = '1px';
+                summarizeButton.style.fontSize = '1.35rem';
+                showMessage('Por favor, selecciona un archivo.', 'info');
+                // Ocultar opciones de descarga
+                document.getElementById('downloadWordButton').style.display = 'none';
+                document.getElementById('downloadOptions').style.display = 'none';
+            }
+        });
+
+        // Función asíncrona para extraer texto de un archivo PDF
+        async function extractTextFromPdf(file) {
+            const arrayBuffer = await file.arrayBuffer(); // Leer el archivo como un ArrayBuffer
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer }); // Cargar el documento PDF
+            const pdf = await loadingTask.promise; // Esperar a que el PDF se cargue
+            let fullText = '';
+            // Iterar sobre cada página del PDF para extraer el texto
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i); // Obtener la página
+                const textContent = await page.getTextContent(); // Obtener el contenido de texto de la página
+                // Unir los elementos de texto en una sola cadena
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += pageText + ' '; // Añadir el texto de la página al texto completo
+            }
+            return fullText;
+        }
+
+        // Función para leer el contenido de un archivo de texto (.txt)
+        function readTextFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result); // Resolver la promesa con el contenido del archivo
+                reader.onerror = (e) => reject(e); // Rechazar la promesa si hay un error
+                reader.readAsText(file); // Leer el archivo como texto
+            });
+        }
+
+        // Función para llamar a la API de Gemini con reintentos exponenciales
+        async function callGeminiApi(prompt, retries = 3, delay = 1000) {
+            let chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            // La clave de API se inyecta automáticamente por el entorno Canvas
+            const apiKey = "AIzaSyAN8hhzj9E7QOI1ykZ5FQwqYkPhKd95TzA";
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        // Si es un error 429 (Demasiadas solicitudes) y quedan reintentos
+                        if (response.status === 429 && i < retries - 1) {
+                            await new Promise(res => setTimeout(res, delay)); // Esperar
+                            delay *= 2; // Duplicar el retraso para el siguiente reintento (backoff exponencial)
+                            continue; // Reintentar la solicitud
+                        }
+                        throw new Error(`Error HTTP! estado: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    // Verificar la estructura de la respuesta de la API
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        return result.candidates[0].content.parts[0].text; // Devolver el texto del resumen
+                    } else {
+                        throw new Error('Respuesta inesperada de la API de Gemini.');
+                    }
+                } catch (error) {
+                    // Si hay un error y quedan reintentos, esperar y reintentar
+                    if (i === retries - 1) {
+                        throw error; // Lanzar el error si no quedan reintentos
+                    }
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2;
+                }
+            }
+            throw new Error('Fallo al llamar a la API de Gemini después de varios reintentos.');
+        }
+
+        // Event listener para el botón de resumir
+        const mainContainer = document.getElementById('mainContainer');
+        summarizeButton.addEventListener('click', async () => {
+            if (!selectedFile) {
+                showMessage('Por favor, selecciona un archivo primero.', 'error');
+                return;
+            }
+
+            // Deshabilitar el botón y mostrar el spinner de carga
+            summarizeButton.disabled = true;
+            summarizeButton.classList.add('btn-disabled');
+            summarizeButton.classList.remove('btn-primary');
+            buttonText.textContent = 'Resumiendo...';
+            loadingSpinner.classList.remove('hidden');
+            hideMessage(); // Ocultar mensajes previos
+            summaryOutput.classList.add('hidden'); // Ocultar resumen anterior
+            summaryText.textContent = ''; // Limpiar texto del resumen
+
+            // Reducir el tamaño del contenedor antes de mostrar el resumen
+            mainContainer.classList.remove('max-w-2xl');
+            mainContainer.classList.add('max-w-md');
+            // Ocultar el botón de descarga al iniciar
+            document.getElementById('downloadWordButton').style.display = 'none';
+
+            let documentContent = '';
+            try {
+                // Leer el contenido del archivo según su tipo
+                if (selectedFile.type === 'text/plain') {
+                    documentContent = await readTextFile(selectedFile);
+                } else if (selectedFile.type === 'application/pdf') {
+                    showMessage('Extrayendo texto del PDF, esto puede tardar un momento...', 'info');
+                    documentContent = await extractTextFromPdf(selectedFile);
+                } else {
+                    throw new Error('Tipo de archivo no soportado. Por favor, sube un archivo .txt o .pdf.');
+                }
+
+                // Verificar si el documento está vacío
+                if (documentContent.trim().length === 0) {
+                    throw new Error('El documento está vacío o no se pudo extraer texto.');
+                }
+
+                // Limitar la longitud del texto de entrada para evitar exceder los límites de tokens de la API
+                const maxInputLength = 20000; // Ajustar según la ventana de contexto de Gemini y tus necesidades
+                const textToSummarize = documentContent.length > maxInputLength
+                    ? documentContent.substring(0, maxInputLength) + "\n\n[Texto truncado para el resumen. El documento original es más largo.]"
+                    : documentContent;
+
+                // Construir el prompt para la API de Gemini
+                const prompt = `Por favor, resume el siguiente documento de forma concisa y clara. Al final, agrega una sección titulada 'Puntos clave' con una lista de los aspectos más importantes del documento.\n\n${textToSummarize}`;
+                const summary = await callGeminiApi(prompt); // Llamar a la API
+
+
+                // Mostrar el resumen y un mensaje de éxito
+                summaryText.textContent = summary;
+                summaryOutput.classList.remove('hidden');
+                showMessage('Resumen generado exitosamente.', 'success');
+
+                // Mostrar el botón de descarga solo si hay resumen
+                if (summary && summary.trim().length > 0) {
+                    document.getElementById('downloadWordButton').style.display = 'block';
+                    document.getElementById('downloadOptions').style.display = 'flex';
+                    summarizeButton.style.display = 'none';
+                } else {
+                    document.getElementById('downloadWordButton').style.display = 'none';
+                    document.getElementById('downloadOptions').style.display = 'none';
+                    summarizeButton.style.display = '';
+                }
+
+                // Agrandar el contenedor central al mostrar el resumen
+                mainContainer.classList.remove('max-w-md');
+                mainContainer.classList.add('max-w-4xl');
+
+            } catch (error) {
+                document.getElementById('downloadWordButton').style.display = 'none';
+                document.getElementById('downloadOptions').style.display = 'none';
+                mainContainer.classList.remove('max-w-4xl');
+                mainContainer.classList.add('max-w-md');
+                summarizeButton.style.display = '';
+                // Manejo de errores
+                console.error('Error al resumir el documento:', error);
+                showMessage(`Error: ${error.message}. Asegúrate de que el archivo no esté vacío y que tienes conexión a internet.`, 'error');
+            } finally {
+                // Restablecer el estado del botón y ocultar el spinner
+                summarizeButton.disabled = false;
+                summarizeButton.classList.remove('btn-disabled');
+                summarizeButton.classList.add('btn-primary');
+                buttonText.textContent = 'Resumir Documento';
+                loadingSpinner.classList.add('hidden');
+            }
+        });
+        // Descargar resumen en Word, Word (docx) o txt
+        downloadWordButton.addEventListener('click', async function() {
+            const resumen = summaryText.textContent;
+            if (!resumen || resumen.trim().length === 0) return;
+            let format = document.getElementById('fileFormatSelect').value;
+            let blob, ext, mime;
+            let fileName = 'resumen';
+            if (format === 'doc') {
+                // Word (HTML compatible)
+                const header = `<!DOCTYPE html>\n<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" xmlns=\"http://www.w3.org/TR/REC-html40\"><head><meta charset='utf-8'><title>Resumen</title></head><body>`;
+                const footer = '</body></html>';
+                const html = header + '<h2>Resumen generado</h2><p>' + resumen.replace(/\n/g, '<br>') + '</p>' + footer;
+                mime = 'application/msword';
+                ext = 'doc';
+                blob = new Blob([html], { type: mime });
+            } else {
+                // Texto plano
+                mime = 'text/plain';
+                ext = 'txt';
+                blob = new Blob([resumen], { type: mime });
+            }
+            // Usar File System Access API si está disponible para elegir ubicación
+            if (window.showSaveFilePicker) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: fileName + '.' + ext,
+                        types: [
+                            { description: 'Word', accept: { 'application/msword': ['.doc'] } },
+                            { description: 'Texto', accept: { 'text/plain': ['.txt'] } }
+                        ]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                } catch (e) {
+                    // Si cancela, no hacer nada
+                }
+            } else {
+                // Fallback: descarga automática
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName + '.' + ext;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            }
+        });
+
+        // Animación bounce más sutil cada 10 segundos para el botón solo si hay archivo seleccionado
+        setInterval(() => {
+            if (selectedFile) {
+                summarizeButton.classList.add('animate-bounce-slow');
+                setTimeout(() => {
+                    summarizeButton.classList.remove('animate-bounce-slow');
+                }, 700); // La animación dura menos y es más sutil
+            }
+        }, 10000);
+    </script>
+    <style>
+    /* Animación bounce más sutil para el botón de resumir */
+    @keyframes bounceSlow {
+        0%, 100% {
+            transform: translateY(0);
+        }
+        30% {
+            transform: translateY(-8px);
+        }
+        60% {
+            transform: translateY(-4px);
+        }
+    }
+    .animate-bounce-slow {
+        animation: bounceSlow 0.7s cubic-bezier(0.4,0,0.2,1);
+    }
+    </style>
+    <script>
+        // Animación de color para el título principal (más lenta y más colores)
+        const mainTitle = document.getElementById('mainTitle');
+        const titleColors = [
+            'text-blue-500',
+            'text-red-500',
+            'text-green-500',
+            'text-yellow-400',
+            'text-purple-400',
+            'text-pink-400',
+            'text-cyan-400',
+            'text-lime-400'
+        ];
+        let colorIndex = 0;
+        setInterval(() => {
+            mainTitle.classList.remove(...titleColors);
+            colorIndex = (colorIndex + 1) % titleColors.length;
+            mainTitle.classList.add(titleColors[colorIndex]);
+        }, 2500);
+    </script>
+</body>
+</html>
